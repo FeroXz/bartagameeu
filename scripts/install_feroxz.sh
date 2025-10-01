@@ -23,11 +23,7 @@ INSTALL_DIR=${1:-${FEROXZ_INSTALL_DIR:-"/opt/feroxz"}}
 PORT=${FEROXZ_HTTP_PORT:-8080}
 RUN_USER=${FEROXZ_USER:-$(id -un)}
 RUN_GROUP=${FEROXZ_GROUP:-$(id -gn)}
-PHP_BIN=$(command -v php || true)
-
-if [[ -z "$PHP_BIN" ]]; then
-  die "php binary not found in PATH"
-fi
+PHP_BIN=${FEROXZ_PHP_BIN:-}
 
 if [[ "$INSTALL_DIR" == "/" ]]; then
   die "Installation directory cannot be '/'"
@@ -63,7 +59,7 @@ sync_tree() {
 # Basic tooling required before package installation
 for cmd in curl tar mktemp; do
   require_cmd "$cmd"
-fi
+done
 
 install_packages() {
   if command -v apt-get >/dev/null 2>&1; then
@@ -84,6 +80,15 @@ install_packages() {
 install_packages
 
 require_cmd git
+
+if [[ -z "$PHP_BIN" ]]; then
+  PHP_BIN=$(command -v php || true)
+fi
+
+if [[ -z "$PHP_BIN" ]]; then
+  die "php binary not found in PATH"
+fi
+
 require_cmd "$PHP_BIN"
 require_cmd sqlite3
 
