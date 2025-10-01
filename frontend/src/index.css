@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  font-family: 'Jost', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.glass-card {
+  @apply bg-white/5 border border-white/10 rounded-3xl shadow-glass backdrop-blur-md;
+}
+
+.section-title {
+  @apply text-3xl font-semibold tracking-tight text-white mb-3;
+}
