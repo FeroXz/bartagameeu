@@ -70,6 +70,19 @@ php -S localhost:8000
 
 Danach im Browser `http://localhost:8000/index.php` öffnen.
 
+### Headless React-Dashboard (Tailwind CSS)
+
+Im Verzeichnis `frontend/` liegt ein moderner, mit React und Tailwind CSS umgesetzter Dashboard-Prototyp. Er visualisiert Tierbestand,
+Adoptionsanfragen, Content-Module und Teamaufgaben in einer glasigen Neon-Optik und kann unabhängig vom PHP-Backend gestartet werden.
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Der Development-Server läuft standardmäßig unter `http://localhost:5173`. Für ein Production-Build genügt `npm run build`.
+
 ## Tests
 
 Syntax-Check der PHP-Dateien:
