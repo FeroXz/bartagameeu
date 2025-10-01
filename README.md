@@ -22,7 +22,21 @@ FeroxZ ist ein leichtgewichtiges, auf PHP 8.3 und SQLite basierendes CMS für R
 
 ## Installation
 
-1. **Dateien hochladen** – den Inhalt dieses Repositories auf den Webspace kopieren (z. B. via FTP oder Git-Deploy).
+### Einzeiler-Autoinstallation (empfohlen)
+
+Starte eine Root- oder `sudo`-fähige Shell auf dem Zielserver und führe folgenden Befehl aus. Der Installer klont das Repo,
+installiert benötigte Pakete (Debian/Ubuntu, Fedora, Arch), richtet Dateirechte ein, baut das React-Frontend und startet einen
+systemd-Dienst unter Port `8080`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bartagameeu/bartagameeu/main/scripts/install_feroxz.sh | bash
+```
+
+Optionale Parameter können per Umgebungsvariablen gesetzt werden (z. B. `FEROXZ_HTTP_PORT=9000` oder `FEROXZ_INSTALL_DIR=/var/www/feroxz`). Ohne `systemd` startet der Installer keinen Dienst, sondern gibt einen manuellen `php -S`-Befehl aus.
+
+### Manuelle Installation
+
+1. **Dateien bereitstellen** – den Inhalt dieses Repositories auf den Webspace kopieren (z. B. via FTP oder Git-Deploy).
 2. **Verzeichnisse beschreibbar machen**:
    ```bash
    chmod -R 775 storage uploads
@@ -69,6 +83,19 @@ php -S localhost:8000
 ```
 
 Danach im Browser `http://localhost:8000/index.php` öffnen.
+
+### Headless React-Dashboard (Tailwind CSS)
+
+Im Verzeichnis `frontend/` liegt ein moderner, mit React und Tailwind CSS umgesetzter Dashboard-Prototyp. Er visualisiert Tierbestand,
+Adoptionsanfragen, Content-Module und Teamaufgaben in einer glasigen Neon-Optik und kann unabhängig vom PHP-Backend gestartet werden.
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Der Development-Server läuft standardmäßig unter `http://localhost:5173`. Für ein Production-Build genügt `npm run build`.
 
 ## Tests
 
