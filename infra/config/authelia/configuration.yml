@@ -1,0 +1,56 @@
+server:
+  host: 0.0.0.0
+  port: 9091
+
+log:
+  level: info
+
+defaults:
+  theme: dark
+
+jwt:
+  secret: ${JWT_SECRET:-change_me}
+
+duo_api:
+  disabled: true
+
+session:
+  name: authelia_session
+  secret: ${SESSION_SECRET:-change_me}
+  expiration: 1h
+  inactivity: 5m
+  domain: ${LOCAL_DOMAIN}
+
+storage:
+  encryption_key: ${STORAGE_ENCRYPTION_KEY:-change_me}
+  local:
+    path: /config/db.sqlite3
+
+authorization_policies:
+  default_policy: two_factor
+
+identity_providers:
+  local:
+    key: /config/users_database.yml
+    password:
+      algorithm: argon2id
+      iterations: 1
+      memory: 65536
+      parallelism: 4
+
+access_control:
+  default_policy: deny
+  networks:
+    - name: internal
+      networks:
+        - 192.168.0.0/16
+        - 10.0.0.0/8
+  rules:
+    - domain: "*.${LOCAL_DOMAIN}"
+      policy: two_factor
+    - domain: "${LOCAL_DOMAIN}"
+      policy: one_factor
+
+notifier:
+  filesystem:
+    filename: /config/notification.log

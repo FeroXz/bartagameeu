@@ -1,0 +1,11 @@
+server:
+  port: 8080
+  bind_address: 0.0.0.0
+  secret_key: ${SEARXNG_SECRET}
+  base_url: "https://search.${LOCAL_DOMAIN}/"
+ui:
+  theme: simple
+  default_locale: de
+search:
+  safe_search: 1
+  autocomplete: "duckduckgo"

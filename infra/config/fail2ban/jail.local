@@ -1,0 +1,19 @@
+[DEFAULT]
+loglevel = INFO
+bantime = 3600
+findtime = 600
+maxretry = 5
+backend = auto
+
+[sshd]
+enabled = true
+port = ssh
+logpath = /var/log/auth.log
+maxretry = 5
+
+[docker-ssh]
+enabled = true
+port = ssh
+filter = sshd
+logpath = /var/log/auth.log
+maxretry = 3
