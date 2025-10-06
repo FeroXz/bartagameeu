@@ -1,0 +1,637 @@
+version: "3.9"
+
+networks:
+  homelab:
+    driver: bridge
+  socket_proxy:
+    driver: bridge
+
+volumes:
+  portainer_data:
+  npm_data:
+  npm_letsencrypt:
+  mariadb_data:
+  redis_data:
+  immich_uploads:
+  immich_library:
+  immich_db_data:
+  mosquitto_config:
+  mosquitto_data:
+  mosquitto_log:
+
+services:
+  docker-socket-proxy:
+    image: ghcr.io/tecnativa/docker-socket-proxy:0.1.2
+    container_name: docker-socket-proxy
+    restart: unless-stopped
+    networks:
+      - socket_proxy
+    environment:
+      CONTAINERS: 1
+      SERVICES: 1
+      TASKS: 1
+      SWARM: 1
+      NETWORKS: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    restart: unless-stopped
+    networks:
+      - socket_proxy
+    command: --cleanup --label-enable
+    environment:
+      - WATCHTOWER_HTTP_API=true
+      - WATCHTOWER_HTTP_API_TOKEN=${ADMIN_PASSWORD}
+      - TZ=${TZ}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: dozzle
+    restart: unless-stopped
+    networks:
+      - socket_proxy
+    environment:
+      - DOZZLE_BASE=/
+      - DOZZLE_ADDR=:8080
+      - DOZZLE_USERNAME=admin
+      - DOZZLE_PASSWORD=${ADMIN_PASSWORD}
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    depends_on:
+      - docker-socket-proxy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "8080:8080"
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: unless-stopped
+    networks:
+      - socket_proxy
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - portainer_data:/data
+    depends_on:
+      - docker-socket-proxy
+    ports:
+      - "9443:9443"
+    command: -H tcp://docker-socket-proxy:2375 --tlsskipverify
+
+  unbound:
+    image: mvance/unbound:latest
+    container_name: unbound
+    restart: unless-stopped
+    networks:
+      - homelab
+    environment:
+      - TZ=${TZ}
+    ports:
+      - "5335:5335/tcp"
+      - "5335:5335/udp"
+    volumes:
+      - ./config/unbound:/opt/unbound/etc/unbound:ro
+
+  pihole:
+    image: pihole/pihole:latest
+    container_name: pihole
+    restart: unless-stopped
+    depends_on:
+      - unbound
+    networks:
+      - homelab
+    hostname: pihole
+    environment:
+      TZ: ${TZ}
+      WEBPASSWORD: ${ADMIN_PASSWORD}
+      FTLCONF_LOCAL_IPV4: ${PIHOLE_IP}
+      PIHOLE_DNS_: 127.0.0.1#5335
+      REV_SERVER: "true"
+      REV_SERVER_TARGET: ${LOCAL_GATEWAY}
+      REV_SERVER_DOMAIN: ${LOCAL_DOMAIN}
+    dns:
+      - 127.0.0.1
+      - 1.1.1.1
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "67:67/udp"
+      - "80:80/tcp"
+      - "443:443/tcp"
+    volumes:
+      - ./data/pihole/etc-pihole:/etc/pihole
+      - ./data/pihole/etc-dnsmasq.d:/etc/dnsmasq.d
+
+  wireguard:
+    image: lscr.io/linuxserver/wireguard:latest
+    container_name: wireguard
+    restart: unless-stopped
+    networks:
+      - homelab
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      - TZ=${TZ}
+      - SERVERURL=${WIREGUARD_ENDPOINT}
+      - SERVERPORT=51820
+      - PEERS=5
+      - PEERDNS=10.8.0.1
+      - INTERNAL_SUBNET=10.8.0.0/24
+      - ALLOWEDIPS=0.0.0.0/0
+    volumes:
+      - ./data/wireguard/config:/config
+      - /lib/modules:/lib/modules:ro
+    ports:
+      - "51820:51820/udp"
+
+  wazuh:
+    image: wazuh/wazuh:4.7.4
+    container_name: wazuh
+    restart: unless-stopped
+    networks:
+      - homelab
+    environment:
+      - INDEXER_URL=https://wazuh-indexer:9200
+      - DASHBOARD_URL=https://wazuh-dashboard:5601
+      - FILEBEAT_MODULES=system
+      - API_USER=admin
+      - API_PASSWORD=${ADMIN_PASSWORD}
+      - TZ=${TZ}
+    depends_on:
+      - wazuh-indexer
+      - wazuh-dashboard
+    ports:
+      - "55000:55000"
+      - "1514:1514/udp"
+      - "1515:1515"
+      - "514:514/udp"
+
+  wazuh-indexer:
+    image: wazuh/wazuh-indexer:4.7.4
+    container_name: wazuh-indexer
+    restart: unless-stopped
+    networks:
+      - homelab
+    environment:
+      - TZ=${TZ}
+      - NETWORK_HOST=0.0.0.0
+    volumes:
+      - ./data/wazuh/indexer-data:/usr/share/elasticsearch/data
+
+  wazuh-dashboard:
+    image: wazuh/wazuh-dashboard:4.7.4
+    container_name: wazuh-dashboard
+    restart: unless-stopped
+    networks:
+      - homelab
+    environment:
+      - TZ=${TZ}
+      - API_USER=admin
+      - API_PASSWORD=${ADMIN_PASSWORD}
+      - WAZUH_API_URL=https://wazuh:55000
+    depends_on:
+      - wazuh
+    ports:
+      - "5601:5601"
+
+  openwebui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: openwebui
+    restart: unless-stopped
+    networks:
+      - homelab
+    environment:
+      - TZ=${TZ}
+      - WEBUI_AUTH=basic
+      - WEBUI_USERNAME=admin
+      - WEBUI_PASSWORD=${ADMIN_PASSWORD}
+    volumes:
+      - ./data/openwebui:/app/backend/data
+    ports:
+      - "3000:8080"
+
+  mariadb:
+    image: mariadb:11
+    container_name: mariadb
+    restart: unless-stopped
+    networks:
+      - homelab
+    environment:
+      - MARIADB_ROOT_PASSWORD=${ADMIN_PASSWORD}
+      - MARIADB_DATABASE=bookstack
+      - MARIADB_USER=bookstack
+      - MARIADB_PASSWORD=${ADMIN_PASSWORD}
+      - TZ=${TZ}
+    volumes:
+      - mariadb_data:/var/lib/mysql
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    networks:
+      - homelab
+    environment:
+      - TZ=${TZ}
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+
+  nextcloud:
+    image: lscr.io/linuxserver/nextcloud:latest
+    container_name: nextcloud
+    restart: unless-stopped
+    networks:
+      - homelab
+    depends_on:
+      - mariadb
+      - redis
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TZ}
+      - MYSQL_HOST=mariadb
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+      - MYSQL_PASSWORD=${ADMIN_PASSWORD}
+      - REDIS_HOST=redis
+    volumes:
+      - ./data/nextcloud:/config
+      - ./data/nextcloud-data:/data
+    ports:
+      - "8081:443"
+
+  bookstack:
+    image: lscr.io/linuxserver/bookstack:latest
+    container_name: bookstack
+    restart: unless-stopped
+    networks:
+      - homelab
+    depends_on:
+      - mariadb
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TZ}
+      - APP_URL=http://bookstack.${LOCAL_DOMAIN}
+      - DB_HOST=mariadb
+      - DB_DATABASE=bookstack
+      - DB_USERNAME=bookstack
+      - DB_PASSWORD=${ADMIN_PASSWORD}
+    volumes:
+      - ./data/bookstack:/config
+    ports:
+      - "8082:80"
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: searxng
+    restart: unless-stopped
+    networks:
+      - homelab
+    environment:
+      - BASE_URL=https://search.${LOCAL_DOMAIN}/
+      - SEARXNG_SECRET=${SEARXNG_SECRET}
+      - TZ=${TZ}
+    volumes:
+      - ./config/searxng:/etc/searxng
+    ports:
+      - "8083:8080"
+
+  filebrowser:
+    image: filebrowser/filebrowser:latest
+    container_name: filebrowser
+    restart: unless-stopped
+    networks:
+      - homelab
+    environment:
+      - FB_BASEURL=
+    volumes:
+      - ./data/filebrowser/root:/srv
+      - ./data/filebrowser/database.db:/database.db
+      - ./config/filebrowser.json:/config.json
+    ports:
+      - "8084:80"
+
+  flowise:
+    image: flowiseai/flowise:latest
+    container_name: flowise
+    restart: unless-stopped
+    networks:
+      - homelab
+    environment:
+      - FLOWISE_USERNAME=admin
+      - FLOWISE_PASSWORD=${ADMIN_PASSWORD}
+      - FLOWISE_PORT=3002
+    volumes:
+      - ./data/flowise:/root/.flowise
+    ports:
+      - "3002:3002"
+
+  fail2ban:
+    image: crazymax/fail2ban:latest
+    container_name: fail2ban
+    restart: unless-stopped
+    networks:
+      - homelab
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      - TZ=${TZ}
+      - F2B_LOG_LEVEL=INFO
+    volumes:
+      - ./config/fail2ban:/etc/fail2ban
+      - ./data/fail2ban:/data
+      - /var/log:/var/log:ro
+    ports:
+      - "8025:8025"
+
+  npmplus:
+    image: jc21/nginx-proxy-manager:latest
+    container_name: npmplus
+    restart: unless-stopped
+    networks:
+      - homelab
+    depends_on:
+      - mariadb
+    environment:
+      - DB_MYSQL_HOST=mariadb
+      - DB_MYSQL_PORT=3306
+      - DB_MYSQL_USER=bookstack
+      - DB_MYSQL_PASSWORD=${ADMIN_PASSWORD}
+      - DB_MYSQL_NAME=npm
+    volumes:
+      - npm_data:/data
+      - npm_letsencrypt:/etc/letsencrypt
+    ports:
+      - "80:80"
+      - "81:81"
+      - "443:443"
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: uptime-kuma
+    restart: unless-stopped
+    networks:
+      - homelab
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - ./data/uptime-kuma:/app/data
+    ports:
+      - "3001:3001"
+
+  open-speedtest:
+    image: openspeedtest/latest
+    container_name: openspeedtest
+    restart: unless-stopped
+    networks:
+      - homelab
+    ports:
+      - "3005:3000"
+
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: mqtt
+    restart: unless-stopped
+    networks:
+      - homelab
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - mosquitto_config:/mosquitto/config
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+
+  authelia:
+    image: authelia/authelia:4.38
+    container_name: authelia
+    restart: unless-stopped
+    networks:
+      - homelab
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - ./config/authelia/configuration.yml:/config/configuration.yml:ro
+      - ./config/authelia/users_database.yml:/config/users_database.yml:ro
+    ports:
+      - "9091:9091"
+
+  crowdsec:
+    image: crowdsecurity/crowdsec:latest
+    container_name: crowdsec
+    restart: unless-stopped
+    networks:
+      - homelab
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - ./config/crowdsec:/etc/crowdsec
+      - ./data/crowdsec:/var/lib/crowdsec/data
+      - /var/log:/var/log:ro
+
+  immich-server:
+    image: ghcr.io/immich-app/immich-server:release
+    container_name: immich-server
+    restart: unless-stopped
+    networks:
+      - homelab
+    depends_on:
+      - immich-postgres
+      - redis
+    environment:
+      - TZ=${TZ}
+      - IMMICH_PORT=2283
+      - DATABASE_URL=postgresql://immich:${ADMIN_PASSWORD}@immich-postgres:5432/immich
+      - REDIS_HOST=redis
+    volumes:
+      - immich_uploads:/usr/src/app/upload
+      - immich_library:/usr/src/app/library
+    ports:
+      - "2283:2283"
+
+  immich-machine-learning:
+    image: ghcr.io/immich-app/immich-machine-learning:release
+    container_name: immich-machine-learning
+    restart: unless-stopped
+    networks:
+      - homelab
+    depends_on:
+      - immich-server
+    environment:
+      - TZ=${TZ}
+      - IMMICH_SERVER_URL=http://immich-server:2283
+    volumes:
+      - immich_uploads:/usr/src/app/upload
+
+  immich-postgres:
+    image: postgres:14
+    container_name: immich-postgres
+    restart: unless-stopped
+    networks:
+      - homelab
+    environment:
+      - POSTGRES_DB=immich
+      - POSTGRES_USER=immich
+      - POSTGRES_PASSWORD=${ADMIN_PASSWORD}
+      - TZ=${TZ}
+    volumes:
+      - immich_db_data:/var/lib/postgresql/data
+
+  npmplus-mariadb-init:
+    image: mariadb:11
+    container_name: npmplus-mariadb-init
+    restart: "no"
+    networks:
+      - homelab
+    environment:
+      - MARIADB_ALLOW_EMPTY_ROOT_PASSWORD=yes
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    command: ["bash", "-c", "mysql -hmariadb -uroot -p${ADMIN_PASSWORD} -e 'CREATE DATABASE IF NOT EXISTS npm; GRANT ALL PRIVILEGES ON npm.* TO \"bookstack\"@\"%\" IDENTIFIED BY \"${ADMIN_PASSWORD}\";'"]
+    depends_on:
+      - mariadb
+
+  uptimekuma-authelia-label:
+    image: alpine:3.19
+    container_name: uptimekuma-authelia-label
+    restart: "no"
+    command: ["/bin/sh", "-c", "exit 0"]
+    labels:
+      - "traefik.enable=false"
+
+  pihole-unbound-healthcheck:
+    image: bash:latest
+    container_name: pihole-unbound-healthcheck
+    restart: "no"
+    command: ["/bin/sh", "-c", "dig @127.0.0.1 -p 5335 cloudflare.com"]
+    depends_on:
+      - unbound
+
+  npmplus-init-delay:
+    image: alpine:3.19
+    container_name: npmplus-init-delay
+    restart: "no"
+    command: ["/bin/sh", "-c", "sleep 10"]
+    depends_on:
+      - npmplus
+
+  uptimekuma-depends:
+    image: alpine:3.19
+    container_name: uptimekuma-depends
+    restart: "no"
+    command: ["/bin/sh", "-c", "sleep 5"]
+    depends_on:
+      - uptime-kuma
+
+  ddns-updater:
+    image: qmcgaw/ddns-updater:latest
+    container_name: ddns-updater
+    restart: unless-stopped
+    networks:
+      - homelab
+    environment:
+      - TZ=${TZ}
+      - PERIOD=10m
+      - LISTENING_PORT=8000
+    volumes:
+      - ./config/ddns:/updater/data
+    ports:
+      - "8000:8000"
+
+  apache-guacamole:
+    image: oznu/guacamole:latest
+    container_name: apache-guacamole
+    restart: unless-stopped
+    networks:
+      - homelab
+    environment:
+      - EXTENSION_LIST=auth-totp
+      - GUACD_HOSTNAME=guacd
+      - MYSQL_HOSTNAME=mariadb
+      - MYSQL_DATABASE=guacamole
+      - MYSQL_USER=guacamole
+      - MYSQL_PASSWORD=${ADMIN_PASSWORD}
+    depends_on:
+      - guacd
+      - mariadb
+    ports:
+      - "8085:8080"
+
+  guacd:
+    image: guacamole/guacd:1.5.4
+    container_name: guacd
+    restart: unless-stopped
+    networks:
+      - homelab
+
+  code-server:
+    image: lscr.io/linuxserver/code-server:latest
+    container_name: code-server
+    restart: unless-stopped
+    networks:
+      - homelab
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TZ}
+      - PASSWORD=${ADMIN_PASSWORD}
+      - SUDO_PASSWORD=${ADMIN_PASSWORD}
+    volumes:
+      - ./data/code-server:/config
+    ports:
+      - "8443:8443"
+
+  duplicati:
+    image: lscr.io/linuxserver/duplicati:latest
+    container_name: duplicati
+    restart: unless-stopped
+    networks:
+      - homelab
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TZ}
+      - CLI_ARGS=--webservice-password=${ADMIN_PASSWORD}
+    volumes:
+      - ./data/duplicati/config:/config
+      - ./data/duplicati/backups:/backups
+      - ./data/duplicati/source:/source
+    ports:
+      - "8200:8200"
+
+  wazuh-filebeat:
+    image: wazuh/wazuh-filebeat:4.7.4
+    container_name: wazuh-filebeat
+    restart: unless-stopped
+    networks:
+      - homelab
+    environment:
+      - TZ=${TZ}
+      - ELASTICSEARCH_HOSTS=https://wazuh-indexer:9200
+    depends_on:
+      - wazuh-indexer
+
+  wazuh-manager-setup:
+    image: alpine:3.19
+    container_name: wazuh-manager-setup
+    restart: "no"
+    command: ["/bin/sh", "-c", "sleep 5"]
+    depends_on:
+      - wazuh
+

@@ -1,0 +1,7 @@
+users:
+  admin:
+    displayname: "Default Admin"
+    email: admin@${LOCAL_DOMAIN}
+    password: "$argon2id$v=19$m=65536,t=3,p=4$ZGVmYXVsdGFkbWlu$gZQgIMyrcdYdS4x+h0cYdENFDxr08LomqKgJo0vvV9w"
+    groups:
+      - admins

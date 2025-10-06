@@ -1,0 +1,5 @@
+filenames:
+  - /var/log/auth.log
+  - /var/log/nginx/*.log
+labels:
+  type: syslog

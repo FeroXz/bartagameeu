@@ -91,6 +91,29 @@ Syntax-Check der PHP-Dateien:
 find public app -name "*.php" -print0 | xargs -0 -n1 php -l
 ```
 
+## Zusatzfunktionen
+
+- [x] Docker-Homelab-Stack mit automatisiertem Setup-Skript
+
+## Docker-Homelab-Stack
+
+Im Verzeichnis `infra/` liegt ein vollständiger Docker-Compose-Stack für ein Home-Lab mit Pi-hole, WireGuard, Nextcloud, Immich, Portainer und vielen weiteren Diensten. Alle Services sind vorkonfiguriert und teilen sich ein gemeinsames Netzwerk.
+
+### Schnellstart
+
+1. **Umgebungsvariablen anpassen:**
+   ```bash
+   cp infra/.env.example infra/.env
+   nano infra/.env
+   ```
+2. **Stack provisionieren:**
+   ```bash
+   ./scripts/setup_homelab.sh
+   ```
+3. **Zugriff:** Die Dienste sind per `http(s)://<deine-ip>:<port>` im LAN erreichbar. Standard-Zugänge nutzen das Passwort aus `ADMIN_PASSWORD` (Standard `123456`).
+
+Die Compose-Datei mappt alle benötigten Ports und erstellt persistenten Speicher unter `infra/data/` sowie Konfigurationsdateien unter `infra/config/`.
+
 ## Standard-Login
 
 - Benutzername: `admin`
